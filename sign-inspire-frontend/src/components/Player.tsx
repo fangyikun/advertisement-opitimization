@@ -12,7 +12,8 @@ function Player() {
   const storeId = searchParams.get('store') || config.defaultStoreId;
 
   const [currentContent, setCurrentContent] = useState<string>('default');
-  const [imageUrl, setImageUrl] = useState<string>('https://picsum.photos/seed/default/1920/1080');
+  const PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1920' height='1080'%3E%3Crect fill='%231e293b' width='1920' height='1080'/%3E%3Ctext x='50%25' y='50%25' fill='%2394a3b8' font-size='24' text-anchor='middle' dy='.3em' font-family='sans-serif'%3E灵犀 · 智能推送%3C/text%3E%3C/svg%3E";
+  const [imageUrl, setImageUrl] = useState<string>(PLACEHOLDER);
   const [fadeIn, setFadeIn] = useState<boolean>(true);
   const prevContentRef = useRef<string>('default');
 
@@ -40,7 +41,7 @@ function Player() {
         
         setTimeout(async () => {
           const url = await fetchImageUrl(newContent);
-          setImageUrl(url || 'https://picsum.photos/seed/default/1920/1080');
+          setImageUrl(url || PLACEHOLDER);
           setCurrentContent(newContent);
           prevContentRef.current = newContent;
           
@@ -85,7 +86,7 @@ function Player() {
           fadeIn ? 'opacity-100' : 'opacity-0'
         }`}
         onError={(e) => {
-          (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/default/1920/1080';
+          (e.target as HTMLImageElement).src = PLACEHOLDER;
         }}
       />
     </div>
