@@ -32,8 +32,24 @@ async def lifespan(app: FastAPI):
     global background_task
     print("⏰ [System] 智能排期调度器启动中...")
     
+    # 初始化数据库（创建表）
+    from app.database import init_db, USE_DATABASE
+    if USE_DATABASE:
+        try:
+            init_db()
+            print("✅ 数据库初始化完成")
+        except Exception as e:
+            print(f"⚠️ 数据库初始化警告: {e}")
+            print("   如果表已存在，可以忽略此警告")
+    else:
+        print("ℹ️ 使用内存数据库模式（数据不会持久化）")
+    
     # 启动时立即执行一次，获取初始天气
-    await check_rules_job()
+    try:
+        await check_rules_job()
+    except Exception as e:
+        print(f"⚠️ 首次规则检查失败: {e}")
+        print("   应用将继续运行，但规则检查可能无法正常工作")
     
     # 启动后台任务，定期检查天气
     background_task = asyncio.create_task(weather_check_loop())

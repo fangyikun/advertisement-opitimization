@@ -13,3 +13,11 @@ export const parseRule = async (storeId: string, text: string) => {
 export const createRule = async (storeId: string, ruleData: any) => {
   return api.post(`/stores/${storeId}/rules`, ruleData);
 };
+
+export const updateRule = async (storeId: string, ruleId: string, data: { priority?: number; name?: string }) => {
+  return api.patch(`/stores/${storeId}/rules/${ruleId}`, data);
+};
+
+export const deleteRule = async (storeId: string, ruleId: string) => {
+  return api.delete(`/stores/${storeId}/rules/${ruleId}`);
+};

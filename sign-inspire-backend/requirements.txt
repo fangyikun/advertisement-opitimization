@@ -3,4 +3,11 @@ uvicorn
 apscheduler
 langchain
 langchain-openai
+langchain-google-genai
 pydantic
+sqlalchemy
+pymysql
+cryptography
+python-dotenv
+httpx
+pypinyin

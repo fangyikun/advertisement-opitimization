@@ -2,7 +2,9 @@
 import httpx
 from datetime import datetime
 import asyncio
-from app.models.rule_storage import MOCK_DB
+from sqlalchemy.orm import Session
+from app.database import SessionLocal
+from app.models.rule_model import Rule
 
 # 阿德莱德的经纬度 (Adelaide Uni)
 ADELAIDE_LAT = -34.9285
@@ -48,52 +50,64 @@ async def get_real_weather():
         code = data['current']['weather_code']
         is_day = data['current']['is_day'] # 1=白天, 0=晚上
 
-        # --- 简单的天气映射逻辑 ---
+        # --- WMO 天气代码映射（与词汇表一致） ---
         if code in [0, 1]:
             return "sunny"
         elif code in [2, 3]:
             return "cloudy"
-        elif code in [51, 53, 55, 61, 63, 65, 80, 81, 82]: # 各种雨
+        elif code in [45, 48]:  # 雾
+            return "fog"
+        elif code in [51, 53, 55, 61, 63, 65, 80, 81, 82]:  # 各种雨
             return "rain"
-        elif code in [71, 73, 75, 85, 86]: # 雪
+        elif code in [71, 73, 75, 85, 86]:  # 雪
             return "snow"
-        elif code in [95, 96, 99]: # 雷暴
+        elif code in [95, 96, 99]:  # 雷暴
             return "storm"
         else:
-            return "cloudy" # 默认
+            return "cloudy"  # 默认
 
     except Exception as e:
         print(f"❌ 获取天气失败: {e}")
         return "sunny" # 降级方案：获取失败就默认是大晴天
 
-# 天气值中英文映射
+# 天气值中英文映射（内置 + 动态词汇表会合并）
 WEATHER_MAP = {
     "sunny": ["sunny", "晴天", "晴"],
     "cloudy": ["cloudy", "多云", "阴"],
     "rain": ["rain", "雨天", "雨", "下雨"],
     "snow": ["snow", "雪天", "雪", "下雪"],
-    "storm": ["storm", "雷暴", "雷雨"]
+    "storm": ["storm", "雷暴", "雷雨"],
+    "fog": ["fog", "雾天", "雾", "大雾"],
 }
 
 def normalize_weather_value(value: str) -> set:
     """
     将天气值（可能是中文或英文）标准化为英文值集合
-    例如："多云" -> {"cloudy"}, "cloudy" -> {"cloudy"}
+    支持动态词汇表中的新词
     """
+    from app.services.vocabulary_service import get_weather_mappings
     value_lower = value.lower().strip()
     result = set()
-    
-    # 检查是否直接匹配英文值
+
+    # 使用动态词汇表（含内置 + DB 中客户添加的新词）
+    vocab = get_weather_mappings()
+    if value_lower in vocab:
+        result.add(vocab[value_lower])
+        return result
+    # 反向查找：通过关键词匹配
+    for kw, eng_value in vocab.items():
+        if kw.lower() == value_lower or value_lower == eng_value:
+            result.add(eng_value)
+            return result
+    # 回退：使用内置 WEATHER_MAP 的别名
     for eng_value, aliases in WEATHER_MAP.items():
         if value_lower == eng_value:
             result.add(eng_value)
-        # 检查是否在别名列表中（包括中文）
+            return result
         for alias in aliases:
             if value_lower == alias.lower():
                 result.add(eng_value)
-                break
-    
-    # 如果没有匹配到，返回空集合
+                return result
     return result
 
 async def check_rules_job():
@@ -121,9 +135,25 @@ async def check_rules_job():
         print(f"[Tick] {current_time} Weather: {current_weather}")
         print(f"🌍 [Real World] Adelaide Weather: {current_weather}")
         
-        # 2. 遍历 MOCK_DB 里的所有规则，按优先级排序后选择匹配的规则
-        # 按优先级排序（优先级数字越大，优先级越高）
-        sorted_rules = sorted(MOCK_DB, key=lambda r: r.get("priority", 1), reverse=True)
+        # 2. 从数据库或内存获取所有规则，按优先级排序后选择匹配的规则
+        from app.database import USE_DATABASE, SessionLocal
+        
+        if USE_DATABASE and SessionLocal is not None:
+            # 从数据库查询
+            db = SessionLocal()
+            try:
+                db_rules = db.query(Rule).order_by(Rule.priority.desc()).all()
+                sorted_rules = [rule.to_dict() for rule in db_rules]
+            except Exception as e:
+                print(f"⚠️ 数据库查询失败，使用内存数据库: {e}")
+                from app.models.rule_storage import MOCK_DB
+                sorted_rules = sorted(MOCK_DB, key=lambda r: r.get("priority", 1), reverse=True)
+            finally:
+                db.close()
+        else:
+            # 降级到内存数据库
+            from app.models.rule_storage import MOCK_DB
+            sorted_rules = sorted(MOCK_DB, key=lambda r: r.get("priority", 1), reverse=True)
         
         # 将当前天气标准化（也通过 normalize_weather_value 处理，确保一致性）
         current_weather_normalized = normalize_weather_value(current_weather)

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { Sparkles, Save, Clock, CloudRain, Calendar, PlaySquare, List, Sun, Cloud, Monitor, RefreshCw } from 'lucide-react';
+import { Sparkles, Save, Clock, CloudRain, Calendar, PlaySquare, List, Sun, Cloud, Monitor, RefreshCw, Trash2 } from 'lucide-react';
 
 // --- 类型定义 (对应后端的 Schema) ---
 interface Condition {
@@ -42,6 +42,8 @@ export default function Dashboard() {
     weather: 'unknown',
     updated_at: null
   });
+  const [currentPlaylist, setCurrentPlaylist] = useState<string>('');
+  const [editingPriorities, setEditingPriorities] = useState<Record<string, number>>({});
 
   // 获取当前生效的规则列表
   const fetchRules = async () => {
@@ -58,6 +60,16 @@ export default function Dashboard() {
     }
   };
 
+  // 获取当前播放内容（规则检查结果）
+  const fetchCurrentContent = async () => {
+    try {
+      const res = await axios.get(`http://127.0.0.1:8000/api/v1/stores/${STORE_ID}/current-content`);
+      setCurrentPlaylist(res.data.content || 'default');
+    } catch {
+      setCurrentPlaylist('');
+    }
+  };
+
   // 获取天气状态
   const fetchWeather = async () => {
     try {
@@ -70,20 +82,18 @@ export default function Dashboard() {
     }
   };
 
-  // 组件加载时获取规则列表和天气状态
+  // 组件加载时获取规则列表、天气和当前播放
   useEffect(() => {
     fetchRules();
-    fetchWeather(); // 立即获取一次
-    
-    // 设置定时器，每30秒获取一次天气
-    const weatherInterval = setInterval(() => {
-      fetchWeather();
-    }, 30000); // 30秒
+    fetchWeather();
+    fetchCurrentContent();
 
-    // 清理定时器
-    return () => {
-      clearInterval(weatherInterval);
-    };
+    const interval = setInterval(() => {
+      fetchWeather();
+      fetchCurrentContent();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // 1. 调用 AI 生成规则
@@ -118,7 +128,11 @@ export default function Dashboard() {
       // 调用真实的后端接口保存规则
       await axios.post(`http://127.0.0.1:8000/api/v1/stores/${STORE_ID}/rules`, generatedRule);
       
-      // 保存成功后刷新规则列表
+      // 保存成功后立即触发规则检查并刷新当前播放
+      await axios.post(`http://127.0.0.1:8000/api/v1/stores/${STORE_ID}/check-rules`).catch(() => {});
+      await fetchCurrentContent();
+      
+      // 刷新规则列表
       await fetchRules();
       
       // 清空表单
@@ -133,12 +147,42 @@ export default function Dashboard() {
     }
   };
 
+  // 更新规则优先级
+  const handleUpdatePriority = async (rule: Rule, newPriority: number) => {
+    if (!rule.id) return;
+    const clamped = Math.max(1, Math.min(10, newPriority));
+    try {
+      await axios.patch(`http://127.0.0.1:8000/api/v1/stores/${STORE_ID}/rules/${rule.id}`, { priority: clamped });
+      await fetchRules();
+      await axios.post(`http://127.0.0.1:8000/api/v1/stores/${STORE_ID}/check-rules`).catch(() => {});
+      await fetchCurrentContent();
+    } catch (error) {
+      console.error("更新优先级失败:", error);
+      alert("更新优先级失败");
+    }
+  };
+
+  // 删除规则
+  const handleDeleteRule = async (rule: Rule) => {
+    if (!rule.id) return;
+    if (!confirm(`确定要删除规则「${rule.name}」吗？`)) return;
+    try {
+      await axios.delete(`http://127.0.0.1:8000/api/v1/stores/${STORE_ID}/rules/${rule.id}`);
+      await fetchRules();
+      await axios.post(`http://127.0.0.1:8000/api/v1/stores/${STORE_ID}/check-rules`).catch(() => {});
+      await fetchCurrentContent();
+    } catch (error) {
+      console.error("删除规则失败:", error);
+      alert("删除规则失败");
+    }
+  };
+
   // 手动触发规则检查
   const handleCheckRules = async () => {
     try {
       const res = await axios.post(`http://127.0.0.1:8000/api/v1/stores/${STORE_ID}/check-rules`);
-      console.log("规则检查结果:", res.data);
-      alert(`规则检查完成！\n当前播放列表: ${res.data.current_playlist}\n当前天气: ${res.data.current_weather}`);
+      setCurrentPlaylist(res.data.current_playlist || 'default');
+      alert(`规则检查完成！\n当前播放: ${res.data.current_playlist}\n当前天气: ${res.data.current_weather}`);
     } catch (error) {
       console.error("触发规则检查失败:", error);
       alert("触发规则检查失败，请检查后端服务是否正常运行");
@@ -222,6 +266,11 @@ export default function Dashboard() {
             <span className="text-sm text-gray-600 ml-2">
               (Adelaide)
             </span>
+            {currentPlaylist && (
+              <span className="text-sm font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">
+                当前播放: {currentPlaylist}
+              </span>
+            )}
           </div>
           
           <div className="flex items-center gap-3">
@@ -280,13 +329,26 @@ export default function Dashboard() {
         {/* --- 结果确认区域 (IFTTT Card) --- */}
         {generatedRule && (
           <div className="bg-white border-2 border-blue-100 rounded-xl overflow-hidden animate-fade-in-up">
-            <div className="bg-blue-50 px-6 py-4 border-b border-blue-100 flex justify-between items-center">
+            <div className="bg-blue-50 px-6 py-4 border-b border-blue-100 flex justify-between items-center flex-wrap gap-3">
               <h3 className="font-bold text-blue-800 flex items-center gap-2">
                 <Sparkles className="w-4 h-4" /> AI 解析结果确认
               </h3>
-              <span className="text-xs bg-blue-200 text-blue-800 px-2 py-1 rounded-full">
-                优先级: {generatedRule.priority}
-              </span>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-700 font-medium">优先级:</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={generatedRule.priority}
+                  onChange={(e) => setGeneratedRule({
+                    ...generatedRule,
+                    priority: Math.max(1, Math.min(10, parseInt(e.target.value, 10) || 1))
+                  })}
+                  className="w-14 border border-gray-300 rounded px-2 py-1 text-center font-medium"
+                  title="数字越大优先级越高，晴天时高优先级规则会优先播放"
+                />
+                <span className="text-xs text-gray-500">(数字越大越优先)</span>
+              </div>
             </div>
 
             <div className="p-6 grid gap-6">
@@ -355,6 +417,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-2 mb-6">
             <List className="w-6 h-6 text-blue-600" />
             <h2 className="text-2xl font-bold text-gray-800">当前生效规则</h2>
+            <span className="text-sm text-gray-500">（同天气下，优先级高的规则优先触发）</span>
             {isLoadingRules && (
               <span className="text-sm text-gray-500">加载中...</span>
             )}
@@ -372,20 +435,52 @@ export default function Dashboard() {
                   key={rule.id || rule.name}
                   className="bg-white border border-gray-200 rounded-xl shadow-md hover:shadow-lg transition-shadow overflow-hidden"
                 >
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center flex-wrap gap-3">
                     <h3 className="font-bold text-gray-800 flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-blue-600" />
                       {rule.name}
                     </h3>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs bg-blue-200 text-blue-800 px-3 py-1 rounded-full font-medium">
-                        优先级: {rule.priority}
-                      </span>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-gray-600">优先级:</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={10}
+                          value={editingPriorities[rule.id!] ?? rule.priority}
+                          onChange={(e) => {
+                            const v = parseInt(e.target.value, 10);
+                            if (!isNaN(v) && rule.id) {
+                              setEditingPriorities((p) => ({ ...p, [rule.id!]: Math.max(1, Math.min(10, v)) }));
+                            }
+                          }}
+                          onBlur={() => {
+                            const v = editingPriorities[rule.id!] ?? rule.priority;
+                            if (rule.id && v !== rule.priority) {
+                              handleUpdatePriority(rule, v);
+                              setEditingPriorities((p) => {
+                                const next = { ...p };
+                                delete next[rule.id!];
+                                return next;
+                              });
+                            }
+                          }}
+                          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+                          className="w-12 border border-gray-300 rounded px-1.5 py-0.5 text-center text-sm font-medium"
+                        />
+                      </div>
                       {rule.id && (
                         <span className="text-xs text-gray-500 font-mono">
                           ID: {rule.id.substring(0, 8)}...
                         </span>
                       )}
+                      <button
+                        onClick={() => handleDeleteRule(rule)}
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="删除规则"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
 
