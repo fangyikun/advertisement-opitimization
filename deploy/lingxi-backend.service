@@ -1,0 +1,19 @@
+# 灵犀后端 systemd 服务
+# 用法：sudo cp deploy/lingxi-backend.service /etc/systemd/system/
+
+[Unit]
+Description=Lingxi Backend (FastAPI)
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/lingxi/backend
+Environment="PATH=/var/www/lingxi/venv/bin"
+ExecStart=/var/www/lingxi/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
