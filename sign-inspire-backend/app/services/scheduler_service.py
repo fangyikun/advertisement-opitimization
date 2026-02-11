@@ -36,6 +36,10 @@ def _ensure_lock():
 # 天气 + 温度上下文（全球规则用）
 WeatherContext = dict  # {"weather": str, "temp_c": float, "is_day": int}
 
+# 天气缓存：国内访问 Open-Meteo 可能较慢，缓存 5 分钟减少重复请求
+_WEATHER_CACHE: dict = {}
+_CACHE_TTL = 300  # 5 分钟
+
 
 async def get_real_weather(lat: Optional[float] = None, lon: Optional[float] = None):
     """
@@ -55,9 +59,17 @@ async def get_weather_context(lat: Optional[float] = None, lon: Optional[float] 
     """
     获取完整天气上下文：weather + temp_c + is_day + hour + weekday
     用于 Brunch、Barbie、Sunday Sesh 等时间场景规则
+    缓存 5 分钟，减少国内访问 Open-Meteo 超时影响
     """
     _lat = lat if lat is not None else ADELAIDE_LAT
     _lon = lon if lon is not None else ADELAIDE_LON
+    cache_key = (round(_lat, 2), round(_lon, 2))
+    now_ts = datetime.now().timestamp()
+    if cache_key in _WEATHER_CACHE:
+        cached = _WEATHER_CACHE[cache_key]
+        if now_ts - cached.get("_ts", 0) < _CACHE_TTL:
+            out = {k: v for k, v in cached.items() if k != "_ts"}
+            return out
     try:
         try:
             from zoneinfo import ZoneInfo
@@ -72,7 +84,7 @@ async def get_weather_context(lat: Optional[float] = None, lon: Optional[float] 
             "latitude": _lat, "longitude": _lon,
             "current": "weather_code,is_day,temperature_2m",
         }
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=8) as client:
             resp = await client.get(url, params=params)
             data = resp.json()
 
@@ -101,14 +113,18 @@ async def get_weather_context(lat: Optional[float] = None, lon: Optional[float] 
             season = "summer" if month in (12, 1, 2) else "autumn" if month in (3, 4, 5) else "winter" if month in (6, 7, 8) else "spring"
         else:  # 北半球
             season = "spring" if month in (3, 4, 5) else "summer" if month in (6, 7, 8) else "autumn" if month in (9, 10, 11) else "winter"
-        return {"weather": weather, "temp_c": temp_c, "is_day": is_day, "hour": hour, "weekday": weekday, "season": season}
+        result = {"weather": weather, "temp_c": temp_c, "is_day": is_day, "hour": hour, "weekday": weekday, "season": season}
+        _WEATHER_CACHE[cache_key] = {**result, "_ts": now_ts}
+        return result
 
     except Exception as e:
         print(f"❌ 获取天气失败: {e}")
         now = datetime.now()
         month = now.month
         season = "summer" if month in (6, 7, 8) else "winter" if month in (12, 1, 2) else "spring" if month in (3, 4, 5) else "autumn"
-        return {"weather": "sunny", "temp_c": 20.0, "is_day": 1, "hour": now.hour, "weekday": now.weekday(), "season": season}
+        fallback = {"weather": "sunny", "temp_c": 20.0, "is_day": 1, "hour": now.hour, "weekday": now.weekday(), "season": season}
+        _WEATHER_CACHE[cache_key] = {**fallback, "_ts": now_ts}
+        return fallback
 
 # 天气值中英文映射（内置 + 动态词汇表会合并）
 WEATHER_MAP = {
