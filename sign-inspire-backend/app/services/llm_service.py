@@ -2,7 +2,6 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from app.schemas.rule import RuleCreate
@@ -13,11 +12,21 @@ from app.services.vocabulary_service import (
     ensure_weather_mapping,
 )
 
-# 1. 初始化 Gemini
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    temperature=0,
-)
+# 懒加载：无 API Key 时应用可启动，仅自然语言解析不可用
+_llm = None
+
+
+def _get_llm():
+    global _llm
+    if _llm is not None:
+        return _llm
+    key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    if not key:
+        raise ValueError("GOOGLE_API_KEY or GEMINI_API_KEY required for LLM. Add to .env or skip natural-language rules.")
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    _llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)  # 使用 env 中的 key
+    return _llm
+
 
 parser = PydanticOutputParser(pydantic_object=RuleCreate)
 
@@ -90,7 +99,7 @@ def _extract_action_with_llm(text: str) -> str:
         ("user", "{text}"),
     ])
     try:
-        chain = prompt | llm
+        chain = prompt | _get_llm()
         result = chain.invoke({"text": text})
         content = (result.content or "").strip()
         if content and content != "未知":
@@ -107,7 +116,7 @@ def _extract_weather_with_llm(text: str) -> str:
         ("user", "{text}"),
     ])
     try:
-        chain = prompt | llm
+        chain = prompt | _get_llm()
         result = chain.invoke({"text": text})
         content = (result.content or "").strip()
         if content:
@@ -154,6 +163,10 @@ async def _parse_rule_with_gemini_full(text: str, store_id: str, db=None) -> Rul
         ("user", "{text}")
     ]).partial(format_instructions=parser.get_format_instructions())
 
+    try:
+        llm = _get_llm()
+    except ValueError:
+        return _parse_with_vocab(text, db)
     chain = prompt | llm | parser
 
     print(f"🧠 [Gemini] 正在解析（复杂输入）: {text}")
