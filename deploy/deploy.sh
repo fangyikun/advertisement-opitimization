@@ -44,7 +44,7 @@ rm -rf "$BACKEND_DIR/__pycache__" "$BACKEND_DIR/app/__pycache__" 2>/dev/null || 
 if [ ! -d "$VENV_DIR" ]; then
     python3 -m venv "$VENV_DIR"
 fi
-"$VENV_DIR/bin/pip" install -r "$BACKEND_DIR/requirements.txt" -q
+"$VENV_DIR/bin/pip" install -r "$BACKEND_DIR/requirements.txt" -q -i https://pypi.org/simple/
 
 # 5. 复制 .env（若存在）
 if [ -f sign-inspire-backend/.env ]; then
