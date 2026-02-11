@@ -110,6 +110,6 @@ server_name lingxi.你的域名.com;
 
 ## 五、注意事项
 
-1. **安全组**：开放 80 端口（HTTP）
+1. **安全组**：开放 8080 端口（Nginx 默认 listen 8080，80 被占用时使用）
 2. **HTTPS**：建议配置证书（Let's Encrypt），Nginx 增加 `listen 443 ssl`
 3. **数据库**：也可用阿里云 RDS，修改 .env 中 `DB_HOST` 为 RDS 地址
