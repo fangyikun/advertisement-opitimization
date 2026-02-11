@@ -6,13 +6,19 @@
 
 ## 一、服务器准备
 
-### 1. 安装环境（CentOS/Ubuntu 示例）
+### 1. 安装环境
+
+**重要：Node.js 需 18+（推荐 20）**，Ubuntu 默认 12 无法构建前端。
 
 ```bash
-# Node.js 18+
-curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
+# Node.js 20（Ubuntu）
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+node -v   # 应显示 v20.x
+
+# 或 CentOS
+curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
 sudo yum install -y nodejs
-# 或 Ubuntu: sudo apt install nodejs npm
 
 # Python 3.10+
 sudo yum install -y python3 python3-pip python3-venv

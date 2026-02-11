@@ -18,12 +18,18 @@ echo "==> 灵犀 部署开始"
 sudo mkdir -p "$APP_DIR" "$BACKEND_DIR" "$FRONTEND_DIR"
 [ -w "$APP_DIR" ] || sudo chown -R $(whoami) "$APP_DIR"
 
-# 2. 构建前端（在项目 sign-inspire-frontend 目录执行）
+# 2. 构建前端（需 Node.js 18+，推荐 20）
 echo "==> 构建前端..."
+NODE_VER=$(node -v 2>/dev/null | sed 's/v//' | cut -d. -f1)
+if [ -z "$NODE_VER" ] || [ "$NODE_VER" -lt 18 ]; then
+    echo "    ⚠ 需要 Node.js 18+，当前: $(node -v 2>/dev/null || echo '未安装')"
+    echo "    Ubuntu 安装: curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt install -y nodejs"
+    exit 1
+fi
 cd sign-inspire-frontend
 export VITE_BASE=/
 export VITE_API_URL=/api/v1
-npm ci
+npm install
 npm run build
 cp -r dist/* "$FRONTEND_DIR/"
 cd ..
