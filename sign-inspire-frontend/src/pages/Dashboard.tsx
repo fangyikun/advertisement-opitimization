@@ -49,16 +49,6 @@ interface WeatherContext {
   updated_at: string | null;
 }
 
-interface RecommendedStore {
-  name: string;
-  address: string;
-  latitude?: number;
-  longitude?: number;
-  type?: string;
-  photos?: string[];
-  google_maps_uri?: string;
-}
-
 const DASHBOARD_CITIES = ['Adelaide', 'Shanghai', 'Beijing', 'Guangzhou', 'Shenzhen', 'Hangzhou', 'Tokyo', 'London', 'Singapore', 'New York'];
 
 const TARGET_LABEL: Record<string, string> = {
@@ -80,7 +70,7 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [generatedRule, setGeneratedRule] = useState<Rule | null>(null);
   const [activeRules, setActiveRules] = useState<Rule[]>([]);
-  const [isLoadingRules, setIsLoadingRules] = useState(false);
+  const [, setIsLoadingRules] = useState(false);
   const [weatherContext, setWeatherContext] = useState<WeatherContext>({
     weather: 'unknown',
     temp_c: null,
