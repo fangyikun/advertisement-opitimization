@@ -1,6 +1,7 @@
 # APScheduler 逻辑 (执行官)
 import httpx
 from datetime import datetime
+from typing import Optional
 import asyncio
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
@@ -10,11 +11,13 @@ from app.models.rule_model import Rule
 ADELAIDE_LAT = -34.9285
 ADELAIDE_LON = 138.6007
 
-# 全局天气上下文，用于与前端共享
-CURRENT_CONTEXT = {"weather": "unknown", "updated_at": None}
+# 全局天气上下文，用于与前端共享（含 temp_c、region 供全球规则）
+CURRENT_CONTEXT = {"weather": "unknown", "temp_c": None, "region": "western", "updated_at": None}
 
-# 当前播放列表，存储最新的触发结果
+# 当前播放列表，存储最新的触发结果（兼容单门店）
 CURRENT_PLAYLIST = "default"
+# 按门店存储：{store_id: target_id}，支持多门店
+CURRENT_PLAYLIST_BY_STORE = {}
 
 # 锁，防止并发执行 check_rules_job
 _check_rules_lock = None
@@ -30,45 +33,82 @@ def _ensure_lock():
             asyncio.set_event_loop(loop)
         _check_rules_lock = asyncio.Lock()
 
-async def get_real_weather():
+# 天气 + 温度上下文（全球规则用）
+WeatherContext = dict  # {"weather": str, "temp_c": float, "is_day": int}
+
+
+async def get_real_weather(lat: Optional[float] = None, lon: Optional[float] = None):
     """
-    调用 Open-Meteo 获取真实天气
+    调用 Open-Meteo 获取真实天气，支持任意经纬度
+    返回天气字符串 (向后兼容)
     文档: https://open-meteo.com/en/docs
     """
-    try:
-        # 1. 构造 URL (请求当前天气代码)
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={ADELAIDE_LAT}&longitude={ADELAIDE_LON}&current=weather_code,is_day"
-        
-        # 2. 发送请求 (不需要 API Key!)
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url)
-            data = resp.json()
-            
-        # 3. 解析 WMO Weather Code
-        # Open-Meteo 返回的是数字代码，我们需要转换成字符串
-        # 参考代码表: https://open-meteo.com/en/docs
-        code = data['current']['weather_code']
-        is_day = data['current']['is_day'] # 1=白天, 0=晚上
+    ctx = await get_weather_context(lat, lon)
+    return ctx.get("weather", "sunny")
 
-        # --- WMO 天气代码映射（与词汇表一致） ---
+
+# 星期映射：mon=0..sun=6（与 datetime.weekday() 一致，0=周一）
+_DAY_ALIAS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
+
+
+async def get_weather_context(lat: Optional[float] = None, lon: Optional[float] = None, timezone: str = "Australia/Adelaide") -> WeatherContext:
+    """
+    获取完整天气上下文：weather + temp_c + is_day + hour + weekday
+    用于 Brunch、Barbie、Sunday Sesh 等时间场景规则
+    """
+    _lat = lat if lat is not None else ADELAIDE_LAT
+    _lon = lon if lon is not None else ADELAIDE_LON
+    try:
+        try:
+            from zoneinfo import ZoneInfo
+            now = datetime.now(ZoneInfo(timezone))
+        except ImportError:
+            now = datetime.now()
+        hour = now.hour
+        weekday = now.weekday()  # 0=Mon, 6=Sun
+
+        url = "https://api.open-meteo.com/v1/forecast"
+        params = {
+            "latitude": _lat, "longitude": _lon,
+            "current": "weather_code,is_day,temperature_2m",
+        }
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, params=params)
+            data = resp.json()
+
+        code = data["current"]["weather_code"]
+        is_day = data["current"].get("is_day", 1)
+        temp_c = float(data["current"].get("temperature_2m", 20))
+
         if code in [0, 1]:
-            return "sunny"
+            weather = "sunny"
         elif code in [2, 3]:
-            return "cloudy"
-        elif code in [45, 48]:  # 雾
-            return "fog"
-        elif code in [51, 53, 55, 61, 63, 65, 80, 81, 82]:  # 各种雨
-            return "rain"
-        elif code in [71, 73, 75, 85, 86]:  # 雪
-            return "snow"
-        elif code in [95, 96, 99]:  # 雷暴
-            return "storm"
+            weather = "cloudy"
+        elif code in [45, 48]:
+            weather = "fog"
+        elif code in [51, 53, 55, 61, 63, 65, 80, 81, 82]:
+            weather = "rain"
+        elif code in [71, 73, 75, 85, 86]:
+            weather = "snow"
+        elif code in [95, 96, 99]:
+            weather = "storm"
         else:
-            return "cloudy"  # 默认
+            weather = "cloudy"
+
+        # 季节：南半球(lat<0)与北半球相反
+        month = now.month
+        if _lat is not None and _lat < 0:  # 南半球（澳洲等）
+            season = "summer" if month in (12, 1, 2) else "autumn" if month in (3, 4, 5) else "winter" if month in (6, 7, 8) else "spring"
+        else:  # 北半球
+            season = "spring" if month in (3, 4, 5) else "summer" if month in (6, 7, 8) else "autumn" if month in (9, 10, 11) else "winter"
+        return {"weather": weather, "temp_c": temp_c, "is_day": is_day, "hour": hour, "weekday": weekday, "season": season}
 
     except Exception as e:
         print(f"❌ 获取天气失败: {e}")
-        return "sunny" # 降级方案：获取失败就默认是大晴天
+        now = datetime.now()
+        month = now.month
+        season = "summer" if month in (6, 7, 8) else "winter" if month in (12, 1, 2) else "spring" if month in (3, 4, 5) else "autumn"
+        return {"weather": "sunny", "temp_c": 20.0, "is_day": 1, "hour": now.hour, "weekday": now.weekday(), "season": season}
 
 # 天气值中英文映射（内置 + 动态词汇表会合并）
 WEATHER_MAP = {
@@ -112,120 +152,29 @@ def normalize_weather_value(value: str) -> set:
 
 async def check_rules_job():
     """
-    检查规则并触发匹配的规则
+    检查规则并触发匹配的规则（按门店维度）
     """
-    global CURRENT_PLAYLIST
-    
-    # 确保锁已初始化
+    global CURRENT_PLAYLIST, CURRENT_PLAYLIST_BY_STORE
+
     _ensure_lock()
-    
-    # 使用锁防止并发执行
+
     async with _check_rules_lock:
-        # 1. 获取真实天气
-        current_weather = await get_real_weather()
-        
-        # 更新全局天气上下文
-        CURRENT_CONTEXT["weather"] = current_weather
+        from app.services.matching_engine import run_matching_for_all_stores
+
+        by_store = await run_matching_for_all_stores(
+            None, lat=ADELAIDE_LAT, lon=ADELAIDE_LON, city="Adelaide", country_code="AU"
+        )
+        CURRENT_PLAYLIST_BY_STORE = dict(by_store)
+        CURRENT_PLAYLIST = by_store.get("store_001", "default")
+
+        ctx = await get_weather_context(timezone="Australia/Adelaide")
+        CURRENT_CONTEXT["weather"] = ctx.get("weather", "unknown")
+        CURRENT_CONTEXT["temp_c"] = ctx.get("temp_c")
+        CURRENT_CONTEXT["hour"] = ctx.get("hour")
+        CURRENT_CONTEXT["weekday"] = ctx.get("weekday")
+        CURRENT_CONTEXT["region"] = "western"
         CURRENT_CONTEXT["updated_at"] = datetime.now().isoformat()
-        
-        # 获取当前时间并格式化
-        current_time = datetime.now().strftime("%H:%M")
-        
-        # 打印当前时间和真实天气
-        print(f"[Tick] {current_time} Weather: {current_weather}")
-        print(f"🌍 [Real World] Adelaide Weather: {current_weather}")
-        
-        # 2. 从数据库或内存获取所有规则，按优先级排序后选择匹配的规则
-        from app.database import USE_DATABASE, SessionLocal
-        
-        if USE_DATABASE and SessionLocal is not None:
-            # 从数据库查询
-            db = SessionLocal()
-            try:
-                db_rules = db.query(Rule).order_by(Rule.priority.desc()).all()
-                sorted_rules = [rule.to_dict() for rule in db_rules]
-            except Exception as e:
-                print(f"⚠️ 数据库查询失败，使用内存数据库: {e}")
-                from app.models.rule_storage import MOCK_DB
-                sorted_rules = sorted(MOCK_DB, key=lambda r: r.get("priority", 1), reverse=True)
-            finally:
-                db.close()
-        else:
-            # 降级到内存数据库
-            from app.models.rule_storage import MOCK_DB
-            sorted_rules = sorted(MOCK_DB, key=lambda r: r.get("priority", 1), reverse=True)
-        
-        # 将当前天气标准化（也通过 normalize_weather_value 处理，确保一致性）
-        current_weather_normalized = normalize_weather_value(current_weather)
-        if not current_weather_normalized:
-            # 如果标准化失败，使用原始值
-            current_weather_normalized = {current_weather}
-        print(f"🌤️  当前天气: '{current_weather}' -> 标准化后: {current_weather_normalized}")
-        
-        triggered = False
-        print(f"📋 检查 {len(sorted_rules)} 条规则...")
-        
-        for rule in sorted_rules:
-            rule_name = rule.get("name", "未知规则")
-            conditions = rule.get("conditions", [])
-            action = rule.get("action", {})
-            
-            print(f"  🔍 检查规则: {rule_name}")
-            
-            # 检查规则的 conditions 是否匹配当前天气
-            matched = False
-            for condition in conditions:
-                # 如果条件类型是天气，且值匹配当前天气
-                if condition.get("type") == "weather":
-                    condition_value = condition.get("value", "")
-                    operator = condition.get("operator", "==")
-                    
-                    print(f"    ⚙️  条件: weather {operator} '{condition_value}'")
-                    
-                    # 标准化条件值（支持中英文）
-                    condition_normalized = normalize_weather_value(condition_value)
-                    print(f"    📊 条件标准化后: {condition_normalized}")
-                    print(f"    📊 当前天气标准化: {current_weather_normalized}")
-                    
-                    # 根据操作符进行匹配判断
-                    if operator == "==":
-                        # 检查是否有交集
-                        intersection = current_weather_normalized & condition_normalized
-                        print(f"    🔗 交集: {intersection}")
-                        if intersection:
-                            matched = True
-                            print(f"    ✅ 匹配成功！")
-                            break
-                        else:
-                            print(f"    ❌ 不匹配")
-                    elif operator == "in":
-                        # 如果 value 是逗号分隔的列表，检查当前天气是否在其中
-                        values = [v.strip() for v in condition_value.split(",")]
-                        for v in values:
-                            v_normalized = normalize_weather_value(v)
-                            if current_weather_normalized & v_normalized:
-                                matched = True
-                                break
-                        if matched:
-                            break
-            
-            # 如果匹配，触发规则（选择优先级最高的匹配规则）
-            if matched:
-                target_id = action.get("target_id", "未知播放列表")
-                print(f"🚀 [Action] 触发规则 '{rule_name}' -> 切换播放列表为 '{target_id}'")
-                # 存储到全局变量
-                CURRENT_PLAYLIST = target_id
-                print(f"✅ [State] CURRENT_PLAYLIST 已更新为: '{CURRENT_PLAYLIST}'")
-                triggered = True
-                break  # 找到优先级最高的匹配规则就停止
-            else:
-                print(f"  ⏭️  规则 '{rule_name}' 不匹配，跳过")
-        
-        # 如果没有规则匹配，设置为默认值
-        if not triggered:
-            print("💤 无规则触发，CURRENT_PLAYLIST 保持为: 'default'")
-            CURRENT_PLAYLIST = "default"
-            print(f"✅ [State] CURRENT_PLAYLIST = '{CURRENT_PLAYLIST}'")
-        
-        # 函数结束前再次确认值
-        print(f"🔍 [Final] check_rules_job 执行完成，CURRENT_PLAYLIST = '{CURRENT_PLAYLIST}'")
+
+        print(f"[Tick] Adelaide Weather: {CURRENT_CONTEXT['weather']} {CURRENT_CONTEXT.get('temp_c')}°C")
+        print(f"📋 匹配结果: {by_store}")
+        print(f"🔍 [Final] check_rules_job 完成, store_001 -> {CURRENT_PLAYLIST}")

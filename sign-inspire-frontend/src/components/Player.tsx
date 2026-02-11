@@ -1,26 +1,25 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { Home } from 'lucide-react';
+import { config } from '../config';
 
-const STORE_ID = 'store_001';
-const API_BASE = 'http://127.0.0.1:8000/api/v1';
-
-interface CurrentContent {
-  content: string;
-}
+const API_BASE = config.apiBaseUrl;
 
 function Player() {
+  const [searchParams] = useSearchParams();
+  const signId = searchParams.get('sign') || config.defaultSignId;
+  const storeId = searchParams.get('store') || config.defaultStoreId;
+
   const [currentContent, setCurrentContent] = useState<string>('default');
   const [imageUrl, setImageUrl] = useState<string>('https://picsum.photos/seed/default/1920/1080');
   const [fadeIn, setFadeIn] = useState<boolean>(true);
   const prevContentRef = useRef<string>('default');
 
-  // 根据 target_id 获取图片 URL（自动从后端搜索互联网图片）
   const fetchImageUrl = async (targetId: string): Promise<string> => {
     try {
       const res = await axios.get<{ url: string }>(
-        `${API_BASE}/stores/${STORE_ID}/media/${encodeURIComponent(targetId)}`
+        `${API_BASE}/stores/${storeId}/media/${encodeURIComponent(targetId)}`
       );
       return res.data?.url || '';
     } catch {
@@ -30,9 +29,10 @@ function Player() {
 
   const fetchCurrentContent = async () => {
     try {
-      const res = await axios.get<CurrentContent>(
-        `${API_BASE}/stores/${STORE_ID}/current-content`
-      );
+      const url = signId
+        ? `${API_BASE}/signs/${signId}/current-content`
+        : `${API_BASE}/stores/${storeId}/current-content`;
+      const res = await axios.get<{ content: string }>(url);
       const newContent = res.data.content || 'default';
       
       if (newContent !== prevContentRef.current) {

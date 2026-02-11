@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware  # <--- 新增这行
 from contextlib import asynccontextmanager
 import asyncio
-from app.api.v1.endpoints import rules
+from app.api.v1.endpoints import rules, stores
 from app.services.scheduler_service import check_rules_job
 
 # 后台任务控制
@@ -43,6 +43,11 @@ async def lifespan(app: FastAPI):
             print("   如果表已存在，可以忽略此警告")
     else:
         print("ℹ️ 使用内存数据库模式（数据不会持久化）")
+        from app.database import _seed_rules_to_mock_db
+        from app.models.rule_storage import MOCK_DB
+        if not any(r.get("store_id") == "store_001" for r in MOCK_DB):
+            _seed_rules_to_mock_db("store_001")
+            print("📋 已写入默认规则种子")
     
     # 启动时立即执行一次，获取初始天气
     try:
@@ -79,6 +84,7 @@ app.add_middleware(
 # --------------------
 
 app.include_router(rules.router, prefix="/api/v1")
+app.include_router(stores.router, prefix="/api/v1")
 
 @app.get("/")
 def health_check():

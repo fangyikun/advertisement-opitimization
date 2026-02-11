@@ -107,6 +107,7 @@ def get_action_mappings(db: Optional[Session] = None) -> Dict[str, str]:
         "防晒霜": "sunscreen_ad", "防晒": "sunscreen_ad",
         "冰西瓜": "bingxigua_ad", "冰西瓜广告": "bingxigua_ad",
         "西瓜": "xigua_ad", "西瓜广告": "xigua_ad",
+        "寿司": "sushi_ad", "寿司广告": "sushi_ad",
     }
     _load_vocabulary(db)
     merged = dict(builtin)

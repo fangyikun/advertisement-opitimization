@@ -1,3 +1,11 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-body text-ink-800 antialiased;
+    background: linear-gradient(180deg, #FDFCFA 0%, #F5F2EB 100%);
+    min-height: 100vh;
+  }
+}
