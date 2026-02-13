@@ -60,10 +60,11 @@ export default function StoresPage() {
   const fetchRecommendations = useCallback(async () => {
     setLoading(true);
     setError(null);
+    const tid = searchParams.get('target_id') || targetId || '';
     try {
       const res = userLocation
-        ? await getRecommendations(10, city, userLocation.lat, userLocation.lon, targetId || undefined)
-        : await getRecommendations(10, city, undefined, undefined, targetId || undefined);
+        ? await getRecommendations(10, city, userLocation.lat, userLocation.lon, tid || undefined)
+        : await getRecommendations(10, city, undefined, undefined, tid || undefined);
       setData(res.data);
     } catch (e: unknown) {
       console.error(e);
@@ -78,7 +79,7 @@ export default function StoresPage() {
     } finally {
       setLoading(false);
     }
-  }, [city, userLocation, targetId]);
+  }, [city, userLocation, targetId, urlTargetId]);
 
   const handleUseMyLocation = useCallback(() => {
     if (!navigator.geolocation) {
@@ -215,7 +216,10 @@ export default function StoresPage() {
             </div>
             <div className="flex items-center gap-2">
               <Link
-                to={`/player?city=${encodeURIComponent(city)}`}
+                to={(() => {
+                const tid = searchParams.get('target_id') || targetId || data?.target_id || '';
+                return `/player?city=${encodeURIComponent(city)}${tid ? `&target_id=${encodeURIComponent(tid)}` : ''}`;
+              })()}
                 className="flex items-center gap-2 px-5 py-2.5 bg-accent-600 text-cream-100 rounded-sm hover:bg-accent-500 transition-all font-body text-sm tracking-wide"
               >
                 <Monitor className="w-4 h-4" />
@@ -260,7 +264,8 @@ export default function StoresPage() {
           {loading ? (
             <div className="py-20 text-center">
               <div className="inline-block w-8 h-8 border-2 border-accent-500/30 border-t-accent-600 rounded-full animate-spin mb-4" />
-              <p className="font-body text-stone-500">正在获取 {city} 的灵感...</p>
+              <p className="font-body text-stone-500">正在获取 {city} 的门店推荐...</p>
+              <p className="font-body text-stone-400 text-sm mt-2">首次加载约 5–15 秒，请稍候</p>
             </div>
           ) : !data || data.stores.length === 0 ? (
             <div className="py-20 text-center">

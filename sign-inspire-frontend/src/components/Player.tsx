@@ -16,6 +16,7 @@ const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 function Player() {
   const [searchParams] = useSearchParams();
   const cityParam = searchParams.get('city') || '';
+  const targetIdParam = searchParams.get('target_id') || '';
   const storeId = searchParams.get('store') || config.defaultStoreId;
   const signId = searchParams.get('sign') || '';
   const useGeo = searchParams.get('geo') === '1';
@@ -48,8 +49,8 @@ function Player() {
     setError(null);
     try {
       const res = userLocation
-        ? await getRecommendations(15, city, userLocation.lat, userLocation.lon)
-        : await getRecommendations(15, city);
+        ? await getRecommendations(15, city, userLocation.lat, userLocation.lon, targetIdParam || undefined)
+        : await getRecommendations(15, city, undefined, undefined, targetIdParam || undefined);
       const data = res.data;
 
       let urls: string[] = [];
@@ -78,7 +79,7 @@ function Player() {
     } finally {
       setLoading(false);
     }
-  }, [city, userLocation, fetchCategoryImage]);
+  }, [city, userLocation, targetIdParam, fetchCategoryImage]);
 
   // 门店/屏幕模式：沿用原有逻辑
   const [storeContent, setStoreContent] = useState<string>('default');
@@ -141,7 +142,7 @@ function Player() {
       const refreshT = setInterval(fetchCitySlides, REFRESH_INTERVAL_MS);
       return () => clearInterval(refreshT);
     }
-  }, [mode, city, userLocation, fetchCitySlides]);
+  }, [mode, city, userLocation, targetIdParam, fetchCitySlides]);
 
   // 城市模式：轮播
   useEffect(() => {

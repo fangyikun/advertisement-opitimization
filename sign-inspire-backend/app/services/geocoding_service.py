@@ -4,6 +4,11 @@
 """
 import httpx
 from typing import Optional, Tuple, Dict, Any
+from time import time
+
+# 地理编码缓存：Nominatim 国内访问慢，缓存 30 分钟
+_GEO_CACHE: Dict[str, tuple] = {}
+_GEO_CACHE_TTL = 1800
 
 NOMINATIM_SEARCH = "https://nominatim.openstreetmap.org/search"
 NOMINATIM_REVERSE = "https://nominatim.openstreetmap.org/reverse"
@@ -56,12 +61,19 @@ def geocode_city_sync(city: str) -> Optional[Dict[str, Any]]:
     if not city or not city.strip():
         return None
     key = city.strip().lower()
+    # 缓存检查
+    now = time()
+    if key in _GEO_CACHE:
+        cached, ts = _GEO_CACHE[key]
+        if now - ts < _GEO_CACHE_TTL:
+            return cached
     preset_raw = _CITY_PRESETS_RAW.get(key)
     if preset_raw:
         lat, lon, bbox, cc = preset_raw[:4]
         out = {"lat": lat, "lon": lon, "bbox": bbox, "city": city.strip(), "country_code": cc}
         if len(preset_raw) > 4 and preset_raw[4]:
             out["china_subregion"] = preset_raw[4]
+        _GEO_CACHE[key] = (out, now)
         return out
     try:
         with httpx.Client(timeout=10) as client:
@@ -93,6 +105,7 @@ def geocode_city_sync(city: str) -> Optional[Dict[str, Any]]:
             out = {"lat": lat, "lon": lon, "bbox": bbox, "city": d.get("display_name", city), "country_code": country_code}
             if china_sub:
                 out["china_subregion"] = china_sub
+            _GEO_CACHE[key] = (out, now)
             return out
     except Exception as e:
         print(f"⚠️ [Geocoding] {city} 解析失败: {e}")

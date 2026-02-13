@@ -3,6 +3,7 @@ import { config } from '../config';
 
 const api = axios.create({
   baseURL: config.apiBaseUrl,
+  timeout: 30000, // 30s，门店推送等慢请求
 });
 
 export const parseRule = async (storeId: string, text: string) => {
@@ -74,4 +75,5 @@ export const getRecommendations = (
     city?: string;
   }>('/recommendations', {
     params: { limit, city, ...(lat != null && lon != null ? { lat, lon } : {}), ...(targetId ? { target_id: targetId } : {}) },
+    timeout: 45000, // 门店推送合并多端 API，适当延长
   });

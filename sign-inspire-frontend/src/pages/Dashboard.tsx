@@ -343,14 +343,18 @@ export default function Dashboard() {
             </h1>
             <div className="flex gap-3">
               <Link
-                to="/stores"
+                to={top5Tags.length > 0
+                  ? `/stores?city=${encodeURIComponent(dashboardCity)}&target_id=${encodeURIComponent(top5Tags[0].target_id)}`
+                  : `/stores?city=${encodeURIComponent(dashboardCity)}`}
                 className="flex items-center gap-2 px-4 py-2.5 bg-ink-800 text-cream-100 rounded-sm hover:bg-ink-700 transition-colors font-body text-sm"
               >
                 <Store className="w-4 h-4" />
                 门店推荐
               </Link>
               <Link
-                to={`/player?city=${encodeURIComponent(dashboardCity)}`}
+                to={top5Tags.length > 0
+                  ? `/player?city=${encodeURIComponent(dashboardCity)}&target_id=${encodeURIComponent(top5Tags[0].target_id)}`
+                  : `/player?city=${encodeURIComponent(dashboardCity)}`}
                 className="flex items-center gap-2 px-4 py-2.5 bg-cream-200/80 text-ink-800 rounded-sm hover:bg-stone-400/20 transition-colors font-body text-sm border border-stone-300/60"
               >
                 <Monitor className="w-4 h-4" />

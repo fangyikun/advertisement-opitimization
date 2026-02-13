@@ -4,6 +4,11 @@
 """
 import httpx
 from typing import List, Dict, Any, Optional
+from time import time
+
+# 推荐结果缓存：减少重复请求，提升门店推送响应速度
+_REC_CACHE: Dict[str, tuple] = {}
+_REC_CACHE_TTL = 120  # 2 分钟
 
 # target_id -> Overpass 查询条件 (amenity 或 shop 等)
 TARGET_TO_OVERPASS = {
@@ -112,7 +117,7 @@ def fetch_places_overpass(key: str, value: str, bbox: tuple, limit: int = 10) ->
     """通过 Overpass API 获取 POI"""
     try:
         query = _build_overpass_query(key, value, bbox, limit)
-        with httpx.Client(timeout=20) as client:
+        with httpx.Client(timeout=10) as client:
             resp = client.post(
                 "https://overpass-api.de/api/interpreter",
                 data={"data": query},
@@ -195,7 +200,15 @@ async def get_current_recommended_stores(
     支持：1) 城市名  2) 用户定位 lat,lon
     返回: { weather, target_id, category_label, stores: [...], city: str }
     """
-    from app.services.scheduler_service import get_real_weather, get_weather_context
+    # 缓存：相同参数短时间重复请求直接返回
+    cache_key = f"{city}|{lat or 0:.2f}|{lon or 0:.2f}|{target_id or ''}|{limit}"
+    now = time()
+    if cache_key in _REC_CACHE:
+        cached, ts = _REC_CACHE[cache_key]
+        if now - ts < _REC_CACHE_TTL:
+            return cached
+
+    from app.services.scheduler_service import get_weather_context
     from app.services.region_service import get_region_from_country
     from app.services.matching_engine import run_matching_for_all_stores
     from app.services.geocoding_service import geocode_city_sync, reverse_geocode_sync
@@ -286,7 +299,7 @@ async def get_current_recommended_stores(
     msg += f"，优先推送{label}，为您精选 {city_display} {len(stores)} 家"
 
     push_message = TARGET_TO_PUSH_MESSAGE.get(target_id or "")
-    return {
+    result = {
         "weather": weather,
         "temp_c": temp_c,
         "region": region,
@@ -297,3 +310,5 @@ async def get_current_recommended_stores(
         "message": msg,
         "push_message": push_message or None,
     }
+    _REC_CACHE[cache_key] = (result, now)
+    return result

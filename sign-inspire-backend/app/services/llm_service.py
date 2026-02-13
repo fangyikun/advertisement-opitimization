@@ -17,15 +17,23 @@ _llm = None
 
 
 def _get_llm():
+    """优先使用 OpenAI（若配置了 OPENAI_API_KEY），否则使用 Google Gemini"""
     global _llm
     if _llm is not None:
         return _llm
-    key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-    if not key:
-        raise ValueError("GOOGLE_API_KEY or GEMINI_API_KEY required for LLM. Add to .env or skip natural-language rules.")
-    from langchain_google_genai import ChatGoogleGenerativeAI
-    _llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)  # 使用 env 中的 key
-    return _llm
+    # 优先 OpenAI（国内访问更稳定）
+    openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if openai_key:
+        from langchain_openai import ChatOpenAI
+        _llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, api_key=openai_key)
+        return _llm
+    # 备选 Gemini
+    gemini_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    if gemini_key:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        _llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+        return _llm
+    raise ValueError("OPENAI_API_KEY or GOOGLE_API_KEY required for LLM. Add to .env")
 
 
 parser = PydanticOutputParser(pydantic_object=RuleCreate)

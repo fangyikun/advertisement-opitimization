@@ -36,9 +36,9 @@ def _ensure_lock():
 # 天气 + 温度上下文（全球规则用）
 WeatherContext = dict  # {"weather": str, "temp_c": float, "is_day": int}
 
-# 天气缓存：国内访问 Open-Meteo 可能较慢，缓存 5 分钟减少重复请求
+# 天气缓存：国内访问 Open-Meteo 可能较慢，缓存 10 分钟减少重复请求
 _WEATHER_CACHE: dict = {}
-_CACHE_TTL = 300  # 5 分钟
+_CACHE_TTL = 600  # 10 分钟
 
 
 async def get_real_weather(lat: Optional[float] = None, lon: Optional[float] = None):
