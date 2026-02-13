@@ -143,7 +143,15 @@ def get_recommended_stores(
         delta = 0.15
         bbox = (lat - delta, lon - delta, lat + delta, lon + delta)
 
-    # 优先 Google Places
+    # 国内优先高德（无墙）；海外或无效时用 Google
+    try:
+        from app.services.amap_places_service import search_stores_amap
+        stores = search_stores_amap(target_id, lat, lon, city, limit, radius)
+        if stores:
+            return stores
+    except Exception as e:
+        print(f"⚠️ [Recommendation] 高德跳过: {e}")
+
     try:
         from app.services.google_places_service import search_stores_google
         stores = search_stores_google(target_id, lat, lon, city, limit, radius)

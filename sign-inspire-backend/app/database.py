@@ -50,17 +50,23 @@ def test_connection():
         # 创建会话工厂
         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
         USE_DATABASE = True
-        print("✅ 数据库连接成功！")
+        try:
+            print("✅ 数据库连接成功！")
+        except UnicodeEncodeError:
+            print("[DB] Connected")
         return True
     except Exception as e:
         USE_DATABASE = False
-        print(f"⚠️ 数据库连接失败: {e}")
-        print("   将使用内存数据库模式（数据不会持久化）")
-        print("\n💡 解决方案：")
-        print("   1. 检查 MySQL 服务是否启动")
-        print("   2. 检查 .env 文件中的数据库配置是否正确")
-        print("   3. 确认数据库是否存在：CREATE DATABASE sign_inspire;")
-        print("   4. 确认用户名和密码是否正确")
+        try:
+            print(f"⚠️ 数据库连接失败: {e}")
+            print("   将使用内存数据库模式（数据不会持久化）")
+            print("\n💡 解决方案：")
+            print("   1. 检查 MySQL 服务是否启动")
+            print("   2. 检查 .env 文件中的数据库配置是否正确")
+            print("   3. 确认数据库是否存在：CREATE DATABASE sign_inspire;")
+            print("   4. 确认用户名和密码是否正确")
+        except UnicodeEncodeError:
+            print(f"[DB] Connection failed: {e}, using memory mode")
         return False
 
 # 初始化时测试连接
@@ -232,19 +238,27 @@ def get_db():
 
 
 def get_db_optional():
-    """可选的数据库会话（数据库未启用时返回 None）"""
-    if USE_DATABASE and SessionLocal:
-        try:
-            db = SessionLocal()
-            try:
-                yield db
-            finally:
-                db.close()
-        except Exception as e:
-            print(f"⚠️ 获取数据库会话失败: {e}")
-            yield None
-    else:
+    """可选的数据库会话（数据库未启用时返回 None）。避免在 except 中 yield 以防 generator throw 报错。"""
+    if not USE_DATABASE or SessionLocal is None:
         yield None
+        return
+    db = None
+    try:
+        db = SessionLocal()
+    except Exception as e:
+        try:
+            print(f"[DB] Session failed: {e}")
+        except UnicodeEncodeError:
+            pass
+        yield None
+        return
+    try:
+        yield db
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
 
 
 def init_db():

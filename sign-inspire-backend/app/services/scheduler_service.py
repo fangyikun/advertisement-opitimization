@@ -88,6 +88,9 @@ async def get_weather_context(lat: Optional[float] = None, lon: Optional[float] 
             resp = await client.get(url, params=params)
             data = resp.json()
 
+        if resp.status_code != 200 or "current" not in data:
+            raise ValueError(f"Open-Meteo 返回异常: status={resp.status_code}, keys={list(data.keys())[:5] if isinstance(data, dict) else 'n/a'}")
+
         code = data["current"]["weather_code"]
         is_day = data["current"].get("is_day", 1)
         temp_c = float(data["current"].get("temperature_2m", 20))
@@ -118,7 +121,7 @@ async def get_weather_context(lat: Optional[float] = None, lon: Optional[float] 
         return result
 
     except Exception as e:
-        print(f"❌ 获取天气失败: {e}")
+        print(f"⚠️ 天气 API 不可用，使用本地估算: {type(e).__name__}")
         now = datetime.now()
         month = now.month
         season = "summer" if month in (6, 7, 8) else "winter" if month in (12, 1, 2) else "spring" if month in (3, 4, 5) else "autumn"

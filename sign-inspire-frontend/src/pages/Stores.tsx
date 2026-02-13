@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
-import { Store, MapPin, ArrowLeft, Cloud, RefreshCw, AlertCircle, Globe, Navigation } from 'lucide-react';
+import { Store, MapPin, ArrowLeft, Cloud, RefreshCw, AlertCircle, Globe, Navigation, Monitor } from 'lucide-react';
 import { getRecommendations } from '../api/client';
 
 interface RecommendedStore {
@@ -213,14 +213,23 @@ export default function StoresPage() {
                 </p>
               </div>
             </div>
-            <button
-              onClick={fetchRecommendations}
-              disabled={loading}
-              className="flex items-center gap-2 px-5 py-2.5 bg-ink-800 text-cream-100 rounded-sm hover:bg-ink-700 disabled:opacity-50 transition-all font-body text-sm tracking-wide"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              刷新
-            </button>
+            <div className="flex items-center gap-2">
+              <Link
+                to={`/player?city=${encodeURIComponent(city)}`}
+                className="flex items-center gap-2 px-5 py-2.5 bg-accent-600 text-cream-100 rounded-sm hover:bg-accent-500 transition-all font-body text-sm tracking-wide"
+              >
+                <Monitor className="w-4 h-4" />
+                全屏播放
+              </Link>
+              <button
+                onClick={fetchRecommendations}
+                disabled={loading}
+                className="flex items-center gap-2 px-5 py-2.5 bg-ink-800 text-cream-100 rounded-sm hover:bg-ink-700 disabled:opacity-50 transition-all font-body text-sm tracking-wide"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                刷新
+              </button>
+            </div>
           </div>
           {data && (
             <p className="mt-5 pt-5 border-t border-stone-300/50 font-body text-ink-700 text-[15px] leading-relaxed">

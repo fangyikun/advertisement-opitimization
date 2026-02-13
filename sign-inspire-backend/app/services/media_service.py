@@ -45,7 +45,10 @@ def _search_unsplash(query: str) -> Optional[str]:
             # regular: 1080px 宽，适合展示
             return urls.get("regular") or urls.get("full") or urls.get("raw")
     except Exception as e:
-        print(f"⚠️ [Media] Unsplash 搜索失败: {e}")
+        try:
+            print(f"[Media] Unsplash search failed: {e}")
+        except UnicodeEncodeError:
+            pass
         return None
 
 
@@ -65,7 +68,10 @@ def _get_keyword_for_target(target_id: str, db: Optional[Session] = None) -> Opt
                 return kw
         return None
     except Exception as e:
-        print(f"⚠️ [Media] 词汇反向查找失败: {e}")
+        try:
+            print(f"[Media] Vocab lookup failed: {e}")
+        except UnicodeEncodeError:
+            pass
         return None
 
 
@@ -97,7 +103,10 @@ def get_image_url(target_id: str, db: Optional[Session] = None) -> str:
                 if own_session and session:
                     session.close()
     except Exception as e:
-        print(f"⚠️ [Media] 缓存查询失败: {e}")
+        try:
+            print(f"[Media] Cache query failed: {e}")
+        except UnicodeEncodeError:
+            pass
 
     # 未命中缓存：搜索
     keyword = _get_keyword_for_target(target_id, db)
@@ -114,11 +123,17 @@ def get_image_url(target_id: str, db: Optional[Session] = None) -> str:
                 try:
                     session.merge(MediaCache(target_id=target_id, image_url=url, search_term=search_term))
                     session.commit()
-                    print(f"📷 [Media] 缓存新图片: {target_id} <- {search_term}")
+                    try:
+                        print(f"[Media] Cached: {target_id} <- {search_term}")
+                    except UnicodeEncodeError:
+                        pass
                 finally:
                     session.close()
         except Exception as e:
-            print(f"⚠️ [Media] 缓存写入失败: {e}")
+            try:
+                print(f"[Media] Cache write failed: {e}")
+            except UnicodeEncodeError:
+                pass
         return url
 
     return _placeholder_url(target_id)

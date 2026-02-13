@@ -69,12 +69,18 @@ def _load_vocabulary(db: Optional[Session] = None) -> None:
                 if row.type in _vocab_cache:
                     _vocab_cache[row.type][row.keyword] = row.mapped_value
             _cache_dirty = False
-            print(f"📚 [Vocab] 已加载 {len(rows)} 条词汇")
+            try:
+                print(f"[Vocab] Loaded {len(rows)} entries")
+            except UnicodeEncodeError:
+                pass
         finally:
             if db is None and session is not None:
                 session.close()
     except Exception as e:
-        print(f"⚠️ [Vocab] 加载失败，使用内置默认: {e}")
+        try:
+            print(f"[Vocab] Load failed, using builtin: {e}")
+        except UnicodeEncodeError:
+            pass
 
 
 def invalidate_cache():
@@ -145,13 +151,19 @@ def add_mapping(
                 session.add(Vocabulary(type=vocab_type, keyword=keyword, mapped_value=mapped_value))
             session.commit()
             _cache_dirty = True
-            print(f"📚 [Vocab] 新增映射: {vocab_type} '{keyword}' -> '{mapped_value}'")
+            try:
+                print(f"[Vocab] New mapping: {vocab_type} '{keyword}' -> '{mapped_value}'")
+            except UnicodeEncodeError:
+                pass
             return True
         finally:
             if db is None and session is not None:
                 session.close()
     except Exception as e:
-        print(f"⚠️ [Vocab] 添加映射失败: {e}")
+        try:
+            print(f"[Vocab] Add mapping failed: {e}")
+        except UnicodeEncodeError:
+            pass
         return False
 
 

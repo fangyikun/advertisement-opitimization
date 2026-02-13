@@ -350,7 +350,7 @@ export default function Dashboard() {
                 门店推荐
               </Link>
               <Link
-                to="/player"
+                to={`/player?city=${encodeURIComponent(dashboardCity)}`}
                 className="flex items-center gap-2 px-4 py-2.5 bg-cream-200/80 text-ink-800 rounded-sm hover:bg-stone-400/20 transition-colors font-body text-sm border border-stone-300/60"
               >
                 <Monitor className="w-4 h-4" />
